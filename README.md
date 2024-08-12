@@ -1,6 +1,7 @@
 # wp81debug
 
 Attempt to create an equivalent of  the [Sysinternals debugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview) for Windows Phone 8.1  
+The OutputDebugString part is largely inspired by the article [Mechanism of OutputDebugString](https://www.codeproject.com/Articles/23776/Mechanism-of-OutputDebugString)  
 
 > [!NOTE]
 > WorkInProgress: currently only the messages of the user-mode function [OutputDebugString](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) are printed.
@@ -8,8 +9,8 @@ Attempt to create an equivalent of  the [Sysinternals debugView](https://learn.m
 ## Usage
 
 ![usage](Capture01.PNG)
-Each line has the format X.Y P S  
-Where X.Y is the time at the moment of the reading of message.  
+Each line has the format H.L P S  
+Where H.L are the [high and low DateTime](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime) at the moment of the reading of message.  
 P is the ID of the process.  
 And S is the message.
 
