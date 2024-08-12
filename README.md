@@ -2,6 +2,9 @@
 
 Attempt to create an equivalent of  the [Sysinternals debugView](https://learn.microsoft.com/en-us/sysinternals/downloads/debugview) for Windows Phone 8.1  
 
+> [!NOTE]
+> WorkInProgress: currently only the messages of the user-mode function [OutputDebugString](https://learn.microsoft.com/en-us/windows/win32/api/debugapi/nf-debugapi-outputdebugstringa) are printed.
+
 ## Usage
 
 ![usage](Capture01.PNG)
