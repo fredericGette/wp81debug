@@ -10,7 +10,7 @@ The OutputDebugString part is largely inspired by the article [Mechanism of Outp
 
 ![usage](Capture01.PNG)
 Each line has the format H.L P S  
-Where H.L are the [high and low DateTime](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime) at the moment of the reading of message.  
+Where H.L are the [high and low DateTime](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime) at the moment of the reading of the message.  
 P is the ID of the process.  
 And S is the message.
 
