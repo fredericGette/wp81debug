@@ -3,6 +3,8 @@
 
 #include "stdafx.h"
 
+#define IOCTL_DBG_PRINT CTL_CODE(0x8000, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
 #define SHARED_MEMORY_SIZE 4096 // Shared memory size is 4KB.
 
 struct DBWIN_BUFFER
@@ -28,8 +30,47 @@ BOOL WINAPI consoleHandler(DWORD signal)
 }
 
 // https://www.codeproject.com/Articles/23776/Mechanism-of-OutputDebugString
-int main()
+int main(int arg, char* argv[])
 {
+	BOOL dbgprint = false;
+
+	if (arg > 1)
+	{
+		if (_strcmpi("dbgprint", argv[1]) > -1)
+		{
+			dbgprint = true;
+		}
+		else
+		{
+			printf("\n");
+			printf("Usage: %s [dbgprint]\n\n", argv[0]);
+			printf("  Print \"OuputDebugString\" of running \"user mode\" processes.\n\n");
+			printf("  Parameters:\n\n");
+			printf("    \"dbgprint\"\tPrint also \"DebugPrint\" of running \"kernel mode\" processes.\n");
+			return 1;
+		}
+	}
+	
+	if (dbgprint)
+	{
+		HANDLE hDevice = CreateFileA("\\\\.\\wp81dbgprint", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+		if (hDevice == INVALID_HANDLE_VALUE)
+		{
+			printf("Failed to open device! 0x%08X\n", GetLastError());
+			return 1;
+		}
+
+		DWORD returned;
+		BOOL success = DeviceIoControl(hDevice, IOCTL_DBG_PRINT, NULL, 0, NULL, 0, &returned, NULL);
+		if (!success)
+		{
+			printf("Failed to send DeviceIoControl! 0x%08X", GetLastError());
+		}
+
+		CloseHandle(hDevice);
+	}
+
+
 	FILETIME SystemFileTime;
 
 	// Event signaling when OutputDebugString finishes writing to shared memory
