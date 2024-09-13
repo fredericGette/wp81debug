@@ -30,47 +30,8 @@ BOOL WINAPI consoleHandler(DWORD signal)
 }
 
 // https://www.codeproject.com/Articles/23776/Mechanism-of-OutputDebugString
-int main(int arg, char* argv[])
+int printDebugOutputString()
 {
-	BOOL dbgprint = false;
-
-	if (arg > 1)
-	{
-		if (_strcmpi("dbgprint", argv[1]) > -1)
-		{
-			dbgprint = true;
-		}
-		else
-		{
-			printf("\n");
-			printf("Usage: %s [dbgprint]\n\n", argv[0]);
-			printf("  Print \"OuputDebugString\" of running \"user mode\" processes.\n\n");
-			printf("  Parameters:\n\n");
-			printf("    \"dbgprint\"\tPrint also \"DebugPrint\" of running \"kernel mode\" processes.\n");
-			return 1;
-		}
-	}
-	
-	if (dbgprint)
-	{
-		HANDLE hDevice = CreateFileA("\\\\.\\wp81dbgprint", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-		if (hDevice == INVALID_HANDLE_VALUE)
-		{
-			printf("Failed to open device! 0x%08X\n", GetLastError());
-			return 1;
-		}
-
-		DWORD returned;
-		BOOL success = DeviceIoControl(hDevice, IOCTL_DBG_PRINT, NULL, 0, NULL, 0, &returned, NULL);
-		if (!success)
-		{
-			printf("Failed to send DeviceIoControl! 0x%08X", GetLastError());
-		}
-
-		CloseHandle(hDevice);
-	}
-
-
 	FILETIME SystemFileTime;
 
 	// Event signaling when OutputDebugString finishes writing to shared memory
@@ -155,7 +116,7 @@ int main(int arg, char* argv[])
 	{
 		if (WaitForSingleObject(hEventDataReady, 100) == WAIT_OBJECT_0) { // Wait 100ms max.
 
-			// Timestamp
+																		  // Timestamp
 			GetSystemTimeAsFileTime(&SystemFileTime);
 
 			// Print the content of the shared memory.
@@ -178,6 +139,78 @@ int main(int arg, char* argv[])
 	CloseHandle(hEventBufferReady);
 	CloseHandle(hEventDataReady);
 
-    return 0;
+	return 0;
+}
+
+int printDebugPrint()
+{
+	HANDLE hDevice = CreateFileA("\\\\.\\wp81dbgprint", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+	if (hDevice == INVALID_HANDLE_VALUE)
+	{
+		printf("Failed to open device! 0x%08X\n", GetLastError());
+		return 1;
+	}
+
+	int result = 0;
+
+	DWORD returned;
+	BOOL success = DeviceIoControl(hDevice, IOCTL_DBG_PRINT, NULL, 0, NULL, 0, &returned, NULL);
+	if (!success)
+	{
+		printf("Failed to send DeviceIoControl! 0x%08X", GetLastError());
+		result = 1;
+	}
+
+	CloseHandle(hDevice);
+
+	return result;
+}
+
+void printUsage(CHAR *commandName)
+{
+	printf("\n");
+	printf("Usage: %s dbgprint|outputstring\n\n", commandName);
+	printf("  Print debug logs of running processes.\n\n");
+	printf("  Parameters:\n\n");
+	printf("    \"dbgprint\"\t\tPrint \"DebugPrint\" of running \"kernel mode\" processes.\n");
+	printf("    \"outputstring\"\tPrint \"OuputDebugString\" of running \"user mode\" processes.\n");
+}
+
+
+int main(int arg, char* argv[])
+{
+	BOOL dbgprint = false;
+
+	if (arg != 2)
+	{
+		printUsage(argv[0]);
+		return 1;
+	}
+	else if (_stricmp("dbgprint", argv[1]) == 0)
+	{
+		dbgprint = true;
+	}
+	else if (_stricmp("outputstring", argv[1]) == 0)
+	{
+		dbgprint = false;
+	}
+	else
+	{
+		printUsage(argv[0]);
+		return 1;
+	}
+	
+	int result = 0;
+
+	if (dbgprint)
+	{
+		result = printDebugPrint();
+	}
+	else
+	{
+		result = printDebugOutputString();
+	}
+
+    return result;
 }
 
