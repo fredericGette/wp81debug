@@ -15,6 +15,30 @@ struct DBWIN_BUFFER
 
 BOOL isRunning = TRUE;
 
+//
+// The format of a single debug log message stored in DEBUG_LOG_BUFFER::LogEntries.
+//
+#include <pshpack1.h>
+typedef struct _DEBUG_LOG_ENTRY
+{
+	//
+	// The system time of when this message is seen in the debug print callback.
+	//
+	LARGE_INTEGER Timestamp;
+
+	//
+	// The length of the message stored in LogLine in characters.
+	//
+	USHORT LogLineLength;
+
+	//
+	// The debug log message, not including terminating null, '\r' or '\n'.
+	//
+	CHAR LogLine[ANYSIZE_ARRAY];
+} DEBUG_LOG_ENTRY, *PDEBUG_LOG_ENTRY;
+static_assert(sizeof(DEBUG_LOG_ENTRY) == 11, "Must be packed for space");
+#include <poppack.h>
+
 BOOL WINAPI consoleHandler(DWORD signal)
 {
 	switch (signal)
@@ -144,6 +168,9 @@ int printDebugOutputString()
 
 int printDebugPrint()
 {
+	SetConsoleCtrlHandler(consoleHandler, TRUE);
+	printf("Listening to DbgPrint...Press Ctrl-C to stop.\n");
+
 	HANDLE hDevice = CreateFileA("\\\\.\\wp81dbgprint", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
 	if (hDevice == INVALID_HANDLE_VALUE)
 	{
@@ -151,19 +178,57 @@ int printDebugPrint()
 		return 1;
 	}
 
-	int result = 0;
-
+	PVOID pOutputBuffer = malloc(8 + 8 + 32768); // ULONG NextLogOffset + ULONG OverflowedLogSize + DEBUG_LOG_ENTRY LogEntries
+	CHAR line[512 + 1];
 	DWORD returned;
-	BOOL success = DeviceIoControl(hDevice, IOCTL_DBG_PRINT, NULL, 0, NULL, 0, &returned, NULL);
-	if (!success)
+	BOOL success;
+	ULONG NextLogOffset;
+	ULONG OverflowedLogSize;
+	while (isRunning)
 	{
-		printf("Failed to send DeviceIoControl! 0x%08X", GetLastError());
-		result = 1;
+		ZeroMemory(pOutputBuffer, 8 + 8 + 32768);
+		success = DeviceIoControl(hDevice, IOCTL_DBG_PRINT, NULL, 0, pOutputBuffer, 8 + 8 + 32768, &returned, NULL);
+		if (!success)
+		{
+			printf("Failed to send DeviceIoControl! 0x%08X", GetLastError());
+			free(pOutputBuffer);
+			CloseHandle(hDevice);
+			return 1;
+		}
+
+		NextLogOffset = *(PULONG)pOutputBuffer;
+		OverflowedLogSize = *(PULONG)((PCHAR)pOutputBuffer + 8);
+
+		//
+		// Iterate all saved debug log messages (if exist).
+		//
+		for (ULONG offset = 0; offset < NextLogOffset; /**/)
+		{
+			PDEBUG_LOG_ENTRY logEntry = (PDEBUG_LOG_ENTRY)((PCHAR)pOutputBuffer + 8 + 8 + offset);
+			ZeroMemory(line, 512 + 1);
+			memcpy(line, logEntry->LogLine, logEntry->LogLineLength);
+			printf("%010u.%010u %s\n", logEntry->Timestamp.HighPart, logEntry->Timestamp.LowPart, line);
+
+			//
+			// Compute the offset to the next entry by adding the size of the current
+			// entry.
+			//
+			offset += RTL_SIZEOF_THROUGH_FIELD(DEBUG_LOG_ENTRY, LogLineLength) +
+				logEntry->LogLineLength;
+		}
+
+		if (OverflowedLogSize > 0)
+		{
+			printf("***** Missed %lu characters *****\n", OverflowedLogSize);
+		}
+
+		Sleep(100);
 	}
 
+	free(pOutputBuffer);
 	CloseHandle(hDevice);
 
-	return result;
+	return 0;
 }
 
 void printUsage(CHAR *commandName)

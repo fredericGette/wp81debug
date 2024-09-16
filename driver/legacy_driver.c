@@ -126,6 +126,7 @@ VOID SaveDebugOutputLine (const LARGE_INTEGER* Timestamp, PCSTR LogLine, PPAIRED
     PDEBUG_LOG_ENTRY logEntry;
 
     lockAcquired = FALSE;
+	
 
     //
     // Get the length of the message in characters. The message should never be
@@ -179,14 +180,11 @@ VOID SaveDebugOutputLine (const LARGE_INTEGER* Timestamp, PCSTR LogLine, PPAIRED
 
     //
     // There are sufficient room to save the message. Get the address to save
-    // the message within active buffer. On debug build, the address should be
-    // filled with 0xff, indicating no one has yet touched there.
+    // the message within active buffer. 
     //
     logEntry = (PDEBUG_LOG_ENTRY)(Add2Ptr(
                                 PairedLogBuffer->ActiveLogBuffer->LogEntries,
                                 PairedLogBuffer->ActiveLogBuffer->NextLogOffset));
-    NT_ASSERT(logEntry->Timestamp.QuadPart == MAXULONG64);
-    NT_ASSERT(logEntry->LogLineLength == MAXUSHORT);
 
     //
     // Save this message and update the offset to the address to save the next
@@ -296,6 +294,41 @@ VOID DebugPrintCallback (PSTRING Output, ULONG ComponentId, ULONG Level)
 }
 
 /*!
+    @brief Enables all levels of debug print for all components.
+
+    @details This function enables all debug print while saving the previous
+        state into g_DebugFilterStates for restore.
+*/
+VOID EnableVerboseDebugOutput ()
+{
+    ULONG statesOfAllLevels;
+    BOOLEAN state;
+
+    //
+    // For all components.
+    //
+    for (ULONG componentId = 0; componentId < DPFLTR_ENDOFTABLE_ID; ++componentId)
+    {
+        //
+        // For all levels (levels are 0-31) of the component.
+        //
+        statesOfAllLevels = 0;
+        for (ULONG level = 0; level < 32; ++level)
+        {
+            //
+            // Get the current state, and save it as a single bit onto the 32bit
+            // integer (statesOfAllLevels).
+            //
+            state = (BOOLEAN)(DbgQueryDebugFilterState(componentId, level));
+            SetFlag(statesOfAllLevels, (state << level));
+
+            NT_VERIFY(NT_SUCCESS(DbgSetDebugFilterState(componentId, level, TRUE)));
+        }
+        g_DebugFilterStates[componentId] = statesOfAllLevels;
+    }
+}
+
+/*!
     @brief Starts the debug print callback.
 
     @details This function takes two buffers to be initialized, and one paired
@@ -315,12 +348,16 @@ NTSTATUS StartDebugPrintCallback (PDEBUG_LOG_BUFFER LogBufferActive, PDEBUG_LOG_
 {
     NTSTATUS status;
     PDEBUG_LOG_ENTRY logEntries1, logEntries2;
+	
+	DbgPrint("wp81dbgPrint!Begin StartDebugPrintCallback");
 
     RtlZeroMemory(LogBufferActive, sizeof(*LogBufferActive));
     RtlZeroMemory(LogBufferInactive, sizeof(*LogBufferInactive));
     RtlZeroMemory(PairedLogBuffer, sizeof(*PairedLogBuffer));
 
     logEntries2 = NULL;
+
+	DbgPrint("wp81dbgPrint!k_DebugLogBufferSize = %lu", k_DebugLogBufferSize);
 
     //
     // Allocate log buffers.
@@ -329,6 +366,7 @@ NTSTATUS StartDebugPrintCallback (PDEBUG_LOG_BUFFER LogBufferActive, PDEBUG_LOG_
 														NonPagedPoolNx,
 														k_DebugLogBufferSize,
 														k_PoolTag));
+	DbgPrint("wp81dbgPrint!logEntries1 = 0x%p", logEntries1);
     if (logEntries1 == NULL)
     {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -339,6 +377,7 @@ NTSTATUS StartDebugPrintCallback (PDEBUG_LOG_BUFFER LogBufferActive, PDEBUG_LOG_
 														NonPagedPoolNx,
 														k_DebugLogBufferSize,
 														k_PoolTag));
+	DbgPrint("wp81dbgPrint!logEntries2 = 0x%p", logEntries2);													
     if (logEntries2 == NULL)
     {
         status = STATUS_INSUFFICIENT_RESOURCES;
@@ -367,7 +406,7 @@ NTSTATUS StartDebugPrintCallback (PDEBUG_LOG_BUFFER LogBufferActive, PDEBUG_LOG_
     //
     // All good. Enable all levels of debug print for all components.
     //
-    // EnableVerboseDebugOutput();
+    EnableVerboseDebugOutput();
 
     DbgPrintEx(DPFLTR_IHVDRIVER_ID,
                DPFLTR_INFO_LEVEL,
@@ -385,6 +424,8 @@ Exit:
             ExFreePoolWithTag(logEntries1, k_PoolTag);
         }
     }
+	
+	DbgPrint("wp81dbgPrint!End StartDebugPrintCallback");
     return status;
 }
 
@@ -402,6 +443,29 @@ NTSTATUS StartDebugPrintLogging()
 }
 
 /*!
+    @brief Disables verbose debug output by restoring filter states to original.
+*/
+VOID DisableVerboseDebugOutput ()
+{
+    ULONG states;
+    BOOLEAN oldState;
+
+    for (ULONG componentId = 0; componentId < DPFLTR_ENDOFTABLE_ID; ++componentId)
+    {
+        states = g_DebugFilterStates[componentId];
+        for (ULONG level = 0; level < 32; ++level)
+        {
+            //
+            // Get the bit corresponding to the "level" from "states", and set
+            // that bit as a new state (restore).
+            //
+            oldState = BooleanFlagOn(states, (1 << level));
+            NT_VERIFY(NT_SUCCESS(DbgSetDebugFilterState(componentId, level, oldState)));
+        }
+    }
+}
+
+/*!
     @brief Stops the debug print callback and cleans up paired buffer.
 
     @param[in,out] PairedLogBuffer - The paired buffer associated to clean up.
@@ -409,11 +473,13 @@ NTSTATUS StartDebugPrintLogging()
 VOID StopDebugPrintCallback (PPAIRED_DEBUG_LOG_BUFFER PairedLogBuffer)
 {
     KIRQL oldIrql;
+	
+	DbgPrint("wp81dbgPrint!Begin StopDebugPrintCallback");
 
     //
     // Restore debug filters to the previous states.
     //
-    // DisableVerboseDebugOutput();
+    DisableVerboseDebugOutput();
 
     //
     // Stop the callback.
@@ -437,6 +503,8 @@ VOID StopDebugPrintCallback (PPAIRED_DEBUG_LOG_BUFFER PairedLogBuffer)
     PairedLogBuffer->BufferValid = FALSE;
 
     ExReleaseSpinLockExclusive(&PairedLogBuffer->ActiveLogBufferLock, oldIrql);
+	
+	DbgPrint("wp81dbgPrint!End StopDebugPrintCallback");
 }
 
 VOID StopDebugPrintLoggging()
@@ -485,6 +553,42 @@ NTSTATUS DeviceClose(PDEVICE_OBJECT DeviceObject, PIRP Irp) {
 	return STATUS_SUCCESS;
 }
 
+ULONG_PTR FlushDebugLogEntries(PVOID pOutputBuffer)
+{
+    NTSTATUS status;
+    PPAIRED_DEBUG_LOG_BUFFER pairedLogBuffer;
+    KIRQL oldIrql;
+    PDEBUG_LOG_BUFFER oldLogBuffer;
+
+    status = STATUS_SUCCESS;
+    pairedLogBuffer = &g_PairedLogBuffer;
+
+    //
+    // Swap active buffer and inactive buffer.
+    //
+    oldIrql = ExAcquireSpinLockExclusive(&pairedLogBuffer->ActiveLogBufferLock);
+    oldLogBuffer = pairedLogBuffer->ActiveLogBuffer;
+    pairedLogBuffer->ActiveLogBuffer = pairedLogBuffer->InactiveLogBuffer;
+    pairedLogBuffer->InactiveLogBuffer = oldLogBuffer;
+    ExReleaseSpinLockExclusive(&pairedLogBuffer->ActiveLogBufferLock, oldIrql);
+
+    NT_ASSERT(pairedLogBuffer->ActiveLogBuffer != pairedLogBuffer->InactiveLogBuffer);
+
+	RtlCopyMemory(pOutputBuffer, &(oldLogBuffer->NextLogOffset), 8);
+	RtlCopyMemory(((PCHAR)pOutputBuffer)+8, &(oldLogBuffer->OverflowedLogSize), 8);
+	RtlCopyMemory(((PCHAR)pOutputBuffer)+16, oldLogBuffer->LogEntries, oldLogBuffer->NextLogOffset);
+
+	ULONG_PTR sizeCopied = 8+8+oldLogBuffer->NextLogOffset;
+
+    //
+    // Finally, clear the previously active buffer.
+    //
+    oldLogBuffer->NextLogOffset = 0;
+    oldLogBuffer->OverflowedLogSize = 0;
+	
+	return sizeCopied;
+}
+
 NTSTATUS DriverDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 {
 	UNREFERENCED_PARAMETER(DeviceObject);
@@ -492,8 +596,7 @@ NTSTATUS DriverDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	ULONG IoControlCode;
 	size_t InputBufferLength;
 	size_t OutputBufferLength;
-	PVOID pOutputBuffer;
-	PVOID pInputBuffer;
+	PVOID pBuffer;
 	ULONG_PTR information = 0;
 
 	// https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/buffer-descriptions-for-i-o-control-codes#method_neither
@@ -501,11 +604,12 @@ NTSTATUS DriverDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	InputBufferLength = Irp->Tail.Overlay.CurrentStackLocation->Parameters.DeviceIoControl.InputBufferLength;
 	OutputBufferLength = Irp->Tail.Overlay.CurrentStackLocation->Parameters.DeviceIoControl.OutputBufferLength;	
 
-	DbgPrint("wp81dbgPrint!DriverDispatch IoControlCode=0x%X InputBufferLength=0x%X OutputBufferLength=0x%X",IoControlCode,InputBufferLength,OutputBufferLength);
+	//DbgPrint("wp81dbgPrint!DriverDispatch IoControlCode=0x%X InputBufferLength=0x%X OutputBufferLength=0x%X",IoControlCode,InputBufferLength,OutputBufferLength);
 
-	pInputBuffer = Irp->Tail.Overlay.CurrentStackLocation->Parameters.DeviceIoControl.Type3InputBuffer;
-	pOutputBuffer = Irp->UserBuffer;
-	DbgPrint("wp81dbgPrint!DriverDispatch pInputBuffer=0x%p pOutputBuffer=0x%p", pInputBuffer, pOutputBuffer);
+	pBuffer = Irp->AssociatedIrp.SystemBuffer;
+	//DbgPrint("wp81dbgPrint!DriverDispatch pBuffer=0x%p", pBuffer);
+	
+	information = FlushDebugLogEntries(pBuffer);
 
 	return CompleteIrp(Irp, status, information);
 }
