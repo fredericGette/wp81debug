@@ -219,7 +219,7 @@ int printDebugPrint()
 
 		if (OverflowedLogSize > 0)
 		{
-			printf("***** Missed %lu characters *****\n", OverflowedLogSize);
+			printf("***** Missed %lu lines *****\n", OverflowedLogSize);
 		}
 
 		Sleep(100);

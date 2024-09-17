@@ -65,7 +65,7 @@ typedef struct _DEBUG_LOG_BUFFER
     ULONG NextLogOffset;
 
     //
-    // How many bytes are not save into LogEntries due to lack of space.
+    // How many lines are not saved into LogEntries due to lack of space.
     //
     ULONG OverflowedLogSize;
 } DEBUG_LOG_BUFFER, *PDEBUG_LOG_BUFFER;
@@ -174,7 +174,7 @@ VOID SaveDebugOutputLine (const LARGE_INTEGER* Timestamp, PCSTR LogLine, PPAIRED
     //
     if (PairedLogBuffer->ActiveLogBuffer->NextLogOffset + logEntrySize > k_DebugLogBufferSize)
     {
-        PairedLogBuffer->ActiveLogBuffer->OverflowedLogSize += logEntrySize;
+        PairedLogBuffer->ActiveLogBuffer->OverflowedLogSize += 1;
         goto Exit;
     }
 
