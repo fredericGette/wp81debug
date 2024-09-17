@@ -611,7 +611,9 @@ NTSTATUS DriverDispatch(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	
 	information = FlushDebugLogEntries(pBuffer);
 
-	return CompleteIrp(Irp, status, information);
+	// "information" must be equal to the number of bytes written in the SystemBuffer
+	// Ottherwise the IOManager won't copy these bytes to the OutputBuffer of the user mode.
+	return CompleteIrp(Irp, status, information); 
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
