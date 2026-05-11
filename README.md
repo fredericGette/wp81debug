@@ -8,10 +8,6 @@ And the DbgPrint part is largely copied from https://github.com/tandasat/DebugLo
 
 ![usage](Capture01.PNG)
 ![outputstring](Capture04.PNG)
-Each line has the format H.L \<P\> S  
-Where H.L are the [high and low DateTime](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime) at the moment of the reading of the message.  
-P is the ID of the process. Only available in "outputdebug" mode.   
-And S is the message.
 
 > [!WARNING]
 > In "dbgprint" mode, you have to redirect the output to a file or a filtering tool otherwise the console is not able to sustain the output rate and you will loss messages.  
